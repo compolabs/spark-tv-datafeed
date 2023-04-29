@@ -146,7 +146,7 @@ export default class UDF {
 
     const asset0 = TOKENS_BY_SYMBOL[assetSymbol0];
     const asset1 = TOKENS_BY_SYMBOL[assetSymbol1];
-    const tradeDocuments = await Trade.find({
+    const trades = await Trade.find({
       $or: [
         {
           asset0: asset0.assetId,
@@ -159,19 +159,20 @@ export default class UDF {
           timestamp: { $gt: from, $lt: to },
         },
       ],
-    });
+    }).then((tradeDocuments) =>
+      tradeDocuments.map((t) => ({
+        ...t.toObject(),
+        price:
+          t.asset0 === asset0.assetId
+            ? BN.formatUnits(t.amount1, asset1.decimals).div(
+                BN.formatUnits(t.amount0, asset0.decimals)
+              )
+            : BN.formatUnits(t.amount0, asset1.decimals).div(
+                BN.formatUnits(t.amount1, asset0.decimals)
+              ),
+      }))
+    );
 
-    let trades = tradeDocuments.map((t) => ({
-      ...t.toObject(),
-      price:
-        t.asset0 === asset0.assetId
-          ? BN.formatUnits(t.amount1, asset1.decimals).div(
-              BN.formatUnits(t.amount0, asset0.decimals)
-            )
-          : BN.formatUnits(t.amount0, asset1.decimals).div(
-              BN.formatUnits(t.amount1, asset0.decimals)
-            ),
-    }));
     return generateKlinesBackend(trades, resolution, from, to);
   }
 }
