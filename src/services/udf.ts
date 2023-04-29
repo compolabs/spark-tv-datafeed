@@ -118,7 +118,6 @@ export default class UDF {
   async history(symbol_str: string, from: number, to: number, resolution: string) {
     const symbol = symbols.find((s) => s.symbol === symbol_str);
     if (symbol == null) throw new SymbolNotFound();
-    const [assetSymbol0, assetSymbol1] = symbol.symbol.split("/");
 
     const RESOLUTIONS_INTERVALS_MAP: Record<string, string> = {
       "1": "1m",
@@ -144,36 +143,7 @@ export default class UDF {
     const interval = RESOLUTIONS_INTERVALS_MAP[resolution];
     if (!interval) throw new InvalidResolution();
 
-    const asset0 = TOKENS_BY_SYMBOL[assetSymbol0];
-    const asset1 = TOKENS_BY_SYMBOL[assetSymbol1];
-    const trades = await Trade.find({
-      $or: [
-        {
-          asset0: asset0.assetId,
-          asset1: asset1.assetId,
-          timestamp: { $gt: from, $lt: to },
-        },
-        {
-          asset0: asset1.assetId,
-          asset1: asset0.assetId,
-          timestamp: { $gt: from, $lt: to },
-        },
-      ],
-    }).then((tradeDocuments) =>
-      tradeDocuments.map((t) => ({
-        ...t.toObject(),
-        price:
-          t.asset0 === asset0.assetId
-            ? BN.formatUnits(t.amount1, asset1.decimals).div(
-                BN.formatUnits(t.amount0, asset0.decimals)
-              )
-            : BN.formatUnits(t.amount0, asset1.decimals).div(
-                BN.formatUnits(t.amount1, asset0.decimals)
-              ),
-      }))
-    );
-
-    return generateKlinesBackend(trades, resolution, from, to);
+    return generateKlinesBackend(symbol.symbol, resolution, from, to);
   }
 }
 
@@ -187,14 +157,12 @@ type TKlines = {
   t: Array<number>;
 };
 
-function generateKlinesBackend(trades: ITrade[], period: string, from: number, to: number) {
-  const sorted = trades.slice().sort((a, b) => (+a.timestamp < +b.timestamp ? -1 : 1));
+async function generateKlinesBackend(symbol: string, period: string, from: number, to: number) {
   const result: TKlines = { s: "no_data", t: [], c: [], o: [], h: [], l: [], v: [] };
-  if (sorted.length == 0) return result;
   let start = from;
   while (true) {
     const end = +start + getPeriodInSeconds(period);
-    const batch = sorted.filter(({ timestamp }) => +timestamp >= start && +timestamp <= end);
+    const batch = await getTrades(symbol, start, end);
     if (batch.length > 0) {
       if (result.s === "no_data") result.s = "ok";
       const prices = batch.map((t: any) => t.price.toNumber());
@@ -207,7 +175,7 @@ function generateKlinesBackend(trades: ITrade[], period: string, from: number, t
       result.v.push(sum.toNumber());
     }
     start = end;
-    if (start > +sorted[sorted.length - 1].timestamp) break;
+    if (start > to) break;
   }
   result.t[result.t.length - 1] = to;
   return result;
@@ -239,4 +207,36 @@ function getPeriodInSeconds(period: string): number {
   } else {
     throw new Error(`Invalid period: ${period}`);
   }
+}
+
+async function getTrades(symbol: string, from: number, to: number) {
+  const [assetSymbol0, assetSymbol1] = symbol.split("/");
+  const asset0 = TOKENS_BY_SYMBOL[assetSymbol0];
+  const asset1 = TOKENS_BY_SYMBOL[assetSymbol1];
+  return Trade.find({
+    $or: [
+      {
+        asset0: asset0.assetId,
+        asset1: asset1.assetId,
+        timestamp: { $gt: from, $lt: to },
+      },
+      {
+        asset0: asset1.assetId,
+        asset1: asset0.assetId,
+        timestamp: { $gt: from, $lt: to },
+      },
+    ],
+  }).then((tradeDocuments) =>
+    tradeDocuments.map((t) => ({
+      ...t.toObject(),
+      price:
+        t.asset0 === asset0.assetId
+          ? BN.formatUnits(t.amount1, asset1.decimals).div(
+              BN.formatUnits(t.amount0, asset0.decimals)
+            )
+          : BN.formatUnits(t.amount0, asset1.decimals).div(
+              BN.formatUnits(t.amount1, asset0.decimals)
+            ),
+    }))
+  );
 }
