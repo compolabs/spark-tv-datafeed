@@ -1,12 +1,13 @@
-import { ITrade, Trade } from "../models/Trade";
-import { TOKENS_BY_SYMBOL } from "../constants";
+import { ITrade } from "../models/Trade";
+import { supportedResolutions, TOKENS_LIST } from "../constants";
 import BN from "../utils/BN";
+import { roundUnixToCandleUnix } from "../utils/roundDateToCandleUnix";
+import { Candle } from "../models/Candle";
+import { getTrades } from "../crones/syncChartCrone";
 
 class UDFError extends Error {}
 
 class SymbolNotFound extends UDFError {}
-
-class InvalidResolution extends UDFError {}
 
 type TSymbol = {
   symbol: string;
@@ -17,55 +18,33 @@ type TSymbol = {
   currency_code: string;
 };
 
-const supportedResolutions = [
-  "1",
-  "3",
-  "5",
-  "15",
-  "30",
-  "60",
-  "120",
-  "240",
-  "360",
-  "480",
-  "720",
-  "1D",
-  "3D",
-  "1W",
-  "1M",
-];
-
-export const symbols = ["ETH", "BTC", "USDC", "UNI", "LINK", "COMP"].reduce(
-  (acc, symbol0, _, arr) => {
-    const batch = arr
-      .filter((symbol1) => symbol1 !== symbol0)
-      .map((symbol1) => ({
-        symbol: `${symbol0}/${symbol1}`,
-        ticker: `${symbol0}/${symbol1}`,
-        name: `${symbol0}/${symbol1}`,
-        full_name: `${symbol0}/${symbol1}`,
-        description: `${symbol0} / ${symbol1}`,
-        currency_code: symbol1,
-        exchange: "SPARK",
-        listed_exchange: "SPARK",
-        type: "crypto",
-        session: "24x7",
-        timezone: "UTC",
-        minmovement: 1,
-        minmov: 1,
-        minmovement2: 0,
-        minmov2: 0,
-        // pricescale: pricescale(symbol),
-        supported_resolutions: supportedResolutions,
-        has_intraday: true,
-        has_daily: true,
-        has_weekly_and_monthly: true,
-        data_status: "streaming",
-      }));
-    return [...acc, ...batch];
-  },
-  [] as Array<TSymbol>
-);
+export const symbols = TOKENS_LIST.map(({ symbol }) => symbol).reduce((acc, symbol0, _, arr) => {
+  const batch = arr
+    .filter((symbol1) => symbol1 !== symbol0)
+    .map((symbol1) => ({
+      symbol: `${symbol0}/${symbol1}`,
+      ticker: `${symbol0}/${symbol1}`,
+      name: `${symbol0}/${symbol1}`,
+      full_name: `${symbol0}/${symbol1}`,
+      description: `${symbol0} / ${symbol1}`,
+      currency_code: symbol1,
+      exchange: "SPARK",
+      listed_exchange: "SPARK",
+      type: "crypto",
+      session: "24x7",
+      timezone: "UTC",
+      minmovement: 1,
+      minmov: 1,
+      minmovement2: 0,
+      minmov2: 0,
+      supported_resolutions: supportedResolutions,
+      has_intraday: true,
+      has_daily: true,
+      has_weekly_and_monthly: true,
+      data_status: "streaming",
+    }));
+  return [...acc, ...batch];
+}, [] as Array<TSymbol>);
 
 export default class UDF {
   constructor() {}
@@ -116,64 +95,36 @@ export default class UDF {
    * @param {string} resolution
    */
   async history(symbol_str: string, from: number, to: number, resolution: string) {
+    from = roundUnixToCandleUnix(from, "down", resolution);
+    to = roundUnixToCandleUnix(to, "up", resolution);
+
     const symbol = symbols.find((s) => s.symbol === symbol_str);
     if (symbol == null) throw new SymbolNotFound();
-    const [assetSymbol0, assetSymbol1] = symbol.symbol.split("/");
-
-    const RESOLUTIONS_INTERVALS_MAP: Record<string, string> = {
-      "1": "1m",
-      "3": "3m",
-      "5": "5m",
-      "15": "15m",
-      "30": "30m",
-      "60": "1h",
-      "120": "2h",
-      "240": "4h",
-      "360": "6h",
-      "480": "8h",
-      "720": "12h",
-      D: "1d",
-      "1D": "1d",
-      "3D": "3d",
-      W: "1w",
-      "1W": "1w",
-      M: "1M",
-      "1M": "1M",
-    };
-
-    const interval = RESOLUTIONS_INTERVALS_MAP[resolution];
-    if (!interval) throw new InvalidResolution();
-
-    const asset0 = TOKENS_BY_SYMBOL[assetSymbol0];
-    const asset1 = TOKENS_BY_SYMBOL[assetSymbol1];
-    const trades = await Trade.find({
-      $or: [
-        {
-          asset0: asset0.assetId,
-          asset1: asset1.assetId,
-          timestamp: { $gt: from, $lt: to },
-        },
-        {
-          asset0: asset1.assetId,
-          asset1: asset0.assetId,
-          timestamp: { $gt: from, $lt: to },
-        },
-      ],
-    }).then((tradeDocuments) =>
-      tradeDocuments.map((t) => ({
-        ...t.toObject(),
-        price:
-          t.asset0 === asset0.assetId
-            ? BN.formatUnits(t.amount1, asset1.decimals).div(
-                BN.formatUnits(t.amount0, asset0.decimals)
-              )
-            : BN.formatUnits(t.amount0, asset1.decimals).div(
-                BN.formatUnits(t.amount1, asset0.decimals)
-              ),
-      }))
-    );
-
-    return generateKlinesBackend(trades, resolution, from, to);
+    // const [assetSymbol0, assetSymbol1] = symbol.symbol.split("/");
+    //
+    // const asset0 = TOKENS_BY_SYMBOL[assetSymbol0];
+    // const asset1 = TOKENS_BY_SYMBOL[assetSymbol1];
+    const candles = await Candle.find({ resolution, t: { $gt: from, $lt: to } }); //TODO SYMBOL
+    const tradesFrom = candles.length > 0 ? candles[candles.length - 1].t : from;
+    const trades = await getTrades(symbol_str, tradesFrom, to);
+    const lastCandles = generateKlines(trades, resolution, tradesFrom, to);
+    const s = candles.length === 0 && trades.length === 0 ? "no_data" : "ok";
+    const result: TKlines = { s, t: [], c: [], o: [], h: [], l: [], v: [] };
+    candles.forEach((candle) => {
+      result.t.push(candle.t);
+      result.c.push(candle.c);
+      result.o.push(candle.o);
+      result.h.push(candle.h);
+      result.l.push(candle.l);
+      result.v.push(candle.v);
+    });
+    result.t = [...result.t, ...lastCandles.t];
+    result.c = [...result.c, ...lastCandles.c];
+    result.o = [...result.o, ...lastCandles.o];
+    result.h = [...result.h, ...lastCandles.h];
+    result.l = [...result.l, ...lastCandles.l];
+    result.v = [...result.v, ...lastCandles.v];
+    return result;
   }
 }
 
@@ -187,7 +138,7 @@ type TKlines = {
   t: Array<number>;
 };
 
-function generateKlinesBackend(trades: ITrade[], period: string, from: number, to: number) {
+function generateKlines(trades: ITrade[], period: string, from: number, to: number) {
   const sorted = trades.slice().sort((a, b) => (+a.timestamp < +b.timestamp ? -1 : 1));
   const result: TKlines = { s: "no_data", t: [], c: [], o: [], h: [], l: [], v: [] };
   if (sorted.length == 0) return result;
@@ -213,7 +164,7 @@ function generateKlinesBackend(trades: ITrade[], period: string, from: number, t
   return result;
 }
 
-function getPeriodInSeconds(period: string): number {
+export function getPeriodInSeconds(period: string): number {
   const map: Record<string, number> = {
     "1": 60,
     "3": 3 * 60,

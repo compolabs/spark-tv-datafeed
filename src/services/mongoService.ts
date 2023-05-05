@@ -14,6 +14,6 @@ export const initMongo = (): Promise<void> =>
     })
     .catch((err) => {
       console.log(`❌  MongoDB connection error. Please make sure MongoDB is running. ${err}`);
-      // process.exit();
+      process.exit();
     });
 export default { initMongo };
