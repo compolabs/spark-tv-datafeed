@@ -1,9 +1,8 @@
-import { ITrade } from "../models/Trade";
+import { getTrades, ITrade } from "../models/Trade";
 import { supportedResolutions, TOKENS_LIST } from "../constants";
 import BN from "../utils/BN";
 import { roundUnixToCandleUnix } from "../utils/roundDateToCandleUnix";
 import { Candle } from "../models/Candle";
-import { getTrades } from "../crones/syncChartCrone";
 
 class UDFError extends Error {}
 

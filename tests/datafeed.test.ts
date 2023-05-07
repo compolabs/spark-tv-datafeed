@@ -3,10 +3,8 @@ import { Trade } from "../src/models/Trade";
 import { supportedResolutions, TOKENS_BY_SYMBOL } from "../src/constants";
 import BN from "../src/utils/BN";
 import dayjs from "dayjs";
-import { roundDateToCandleUnix, roundUnixToCandleUnix } from "../src/utils/roundDateToCandleUnix";
-import { getPeriodInSeconds } from "../src/services/udf";
-import { Candle } from "../src/models/Candle";
-import { getTrades } from "../src/crones/syncChartCrone";
+import { roundDateToCandleUnix } from "../src/utils/roundDateToCandleUnix";
+import { syncChartCrone } from "../src/crones/syncChartCrone";
 
 describe("test", () => {
   beforeAll(() => initMongo());
@@ -62,46 +60,13 @@ describe("Trades normalize", () => {
 
 //----------------------------------------------------------------------------------------
 
-const resolution = "30";
 const market = "BTC/USDC";
 describe("Migrate", () => {
   beforeAll(() => initMongo());
   it("Migrate trades to candles", async () => {
-    const [firstTrade, lastTrade] = await Promise.all([
-      Trade.find().sort({ timestamp: 1 }).limit(1),
-      Trade.find().sort({ timestamp: -1 }).limit(1),
-    ]).then((res) => res.map((arr) => arr[0]));
-    if (firstTrade == null || lastTrade == null) throw new Error("Cannot find trades");
-    const lastCandle = await Candle.find().sort({ t: -1 }).limit(1);
-    if (lastCandle[0] != null) {
-      firstTrade.timestamp = roundUnixToCandleUnix(lastCandle[0].t, "up", resolution) + 1;
+    for (let i in supportedResolutions) {
+      await syncChartCrone(market, supportedResolutions[i]);
+      console.log(`✅ Resolution ${supportedResolutions[i]} migrated`);
     }
-    let i = 0;
-    while (true) {
-      const offset = getPeriodInSeconds(resolution) * i;
-      const from = roundUnixToCandleUnix(firstTrade.timestamp, "down", resolution) + offset;
-      const to = roundUnixToCandleUnix(firstTrade.timestamp, "up", resolution) + offset;
-      if (from > lastTrade.timestamp || to > dayjs().unix()) break;
-      const trades = await getTrades(market, from, to);
-      const candle = { t: 0, o: 0, c: 0, h: 0, l: 0, v: 0, resolution };
-      const prices = trades.map((t: any) => t.price.toNumber());
-
-      const sum = trades.reduce((amount, { amount0 }) => amount.plus(amount0), BN.ZERO);
-      candle.t = +(trades[0]?.timestamp ?? from);
-      prices.length > 0 && (candle.o = prices[0]);
-      prices.length > 0 && (candle.c = prices[prices.length - 1]);
-      prices.length > 0 && (candle.h = Math.max(...prices));
-      prices.length > 0 && (candle.l = Math.min(...prices));
-      candle.v = sum.toNumber();
-      await Candle.create(candle);
-      console.log(
-        dayjs(from * 1000).format("DD-MMM HH:mm:ss.SSS"),
-        "-",
-        dayjs(to * 1000).format("DD-MMM HH:mm:ss.SSS"),
-        candle
-      );
-
-      i++;
-    }
-  }, 500000);
+  }, 5000000);
 });
