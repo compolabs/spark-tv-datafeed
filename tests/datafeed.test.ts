@@ -4,7 +4,7 @@ import { supportedResolutions, TOKENS_BY_SYMBOL } from "../src/constants";
 import BN from "../src/utils/BN";
 import dayjs from "dayjs";
 import { roundDateToCandleUnix } from "../src/utils/roundDateToCandleUnix";
-import { syncChartCrone } from "../src/crones/syncChartCrone";
+import { ChartCrone } from "../src/crones/syncChartCrone";
 
 describe("test", () => {
   beforeAll(() => initMongo());
@@ -65,8 +65,8 @@ describe("Migrate", () => {
   beforeAll(() => initMongo());
   it("Migrate trades to candles", async () => {
     for (let i in supportedResolutions) {
-      await syncChartCrone(market, supportedResolutions[i]);
+      await ChartCrone.syncChartCrone(market, supportedResolutions[i]);
       console.log(`✅ Resolution ${supportedResolutions[i]} migrated`);
     }
-  }, 5000000);
+  }, 90000000);
 });
