@@ -109,8 +109,19 @@ export default class UDF {
     // const asset0 = TOKENS_BY_SYMBOL[assetSymbol0];
     // const asset1 = TOKENS_BY_SYMBOL[assetSymbol1];
     const candles = await Candle.find({ resolution, t: { $gt: from, $lt: to } }); //TODO SYMBOL
-    const tradesFrom = candles.length > 0 ? candles[candles.length - 1].t : from;
+    // console.log({
+    //   candles: candles.length,
+    //   from: dayjs(from * 1000).format("DD-MMM HH:mm:ss.SSS"),
+    //   to: dayjs(to * 1000).format("DD-MMM HH:mm:ss.SSS"),
+    // });
+    const tradesFrom =
+      candles.length > 0 ? candles[candles.length - 1].t + getPeriodInSeconds(resolution) : from;
     const trades = await getTrades(symbol_str, tradesFrom, to);
+    // console.log({
+    //   trades: trades.length,
+    //   tradesFrom: dayjs(tradesFrom * 1000).format("DD-MMM HH:mm:ss.SSS"),
+    //   to: dayjs(from * 1000).format("DD-MMM HH:mm:ss.SSS"),
+    // });
     const lastCandles = generateKlines(trades, resolution, tradesFrom, to);
     const s = candles.length === 0 && trades.length === 0 ? "no_data" : "ok";
     const result: TKlines = { s, t: [], c: [], o: [], h: [], l: [], v: [] };
@@ -185,8 +196,8 @@ export function getPeriodInSeconds(period: string): number {
     "3D": 3 * 24 * 60 * 60,
     W: 7 * 24 * 60 * 60,
     "1W": 7 * 24 * 60 * 60,
-    M: 30 * 24 * 60 * 60,
-    "1M": 30 * 24 * 60 * 60,
+    M: 30 * 24 * 60 * 60, //TODO fix
+    "1M": 30 * 24 * 60 * 60, //TODO fix
   };
   if (map[period] != null) {
     return map[period];

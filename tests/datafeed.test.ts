@@ -5,7 +5,6 @@ import BN from "../src/utils/BN";
 import dayjs from "dayjs";
 import { roundDateToCandleUnix } from "../src/utils/roundDateToCandleUnix";
 import { ChartCrone } from "../src/crones/syncChartCrone";
-import { Candle } from "../src/models/Candle";
 
 describe("test", () => {
   beforeAll(() => initMongo());
@@ -65,10 +64,9 @@ const market = "BTC/USDC";
 describe("Migrate", () => {
   beforeAll(() => initMongo());
   it("Migrate trades to candles", async () => {
-    // for (let i in supportedResolutions) {
-    //   await ChartCrone.syncChartCrone(market, supportedResolutions[i]);
-    await ChartCrone.syncChartCrone(market, "30");
-    //   console.log(`✅ Resolution ${supportedResolutions[i]} migrated`);
-    // }
+    for (let i in supportedResolutions) {
+      await ChartCrone.syncChartCrone(market, supportedResolutions[i]);
+      console.log(`✅ Resolution ${supportedResolutions[i]} migrated`);
+    }
   }, 90000000);
 });
