@@ -154,7 +154,7 @@ function generateKlines(trades: ITrade[], period: string, from: number, to: numb
       if (result.s === "no_data") result.s = "ok";
       const prices = batch.map((t: any) => t.price.toNumber());
       const sum = batch.reduce((amount, { amount0 }) => amount.plus(amount0), BN.ZERO);
-      result.t.push(+batch[0].timestamp);
+      result.t.push(+start); // result.t.push(+batch[0].timestamp);
       result.o.push(prices[0]);
       result.c.push(prices[prices.length - 1]);
       result.h.push(Math.max(...prices));
