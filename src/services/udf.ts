@@ -94,6 +94,11 @@ export default class UDF {
    * @param {string} resolution
    */
   async history(symbol_str: string, from: number, to: number, resolution: string) {
+    // console.log(
+    //   dayjs(from * 1000).format("DD-MMM HH:mm:ss.SSS"),
+    //   "-",
+    //   dayjs(to * 1000).format("DD-MMM HH:mm:ss.SSS")
+    // );
     from = roundUnixToCandleUnix(from, "down", resolution);
     to = roundUnixToCandleUnix(to, "up", resolution);
 
@@ -159,7 +164,6 @@ function generateKlines(trades: ITrade[], period: string, from: number, to: numb
     start = end;
     if (start > +sorted[sorted.length - 1].timestamp) break;
   }
-  result.t[result.t.length - 1] = to;
   return result;
 }
 
